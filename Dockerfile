@@ -1,9 +1,9 @@
 FROM golang:1.21 AS build
 
 ARG SM_VERSION
-ENV DEBIAN_FRONTEND noninteractive
-ENV BUILD_DIR ${GOPATH}/src/github.com/JustaPenguin/assetto-server-manager
-ENV GO111MODULE on
+ENV DEBIAN_FRONTEND=noninteractive
+ENV BUILD_DIR=${GOPATH}/src/github.com/JustaPenguin/assetto-server-manager
+ENV GO111MODULE=on
 
 RUN curl -sL https://deb.nodesource.com/setup_20.x | bash -
 RUN apt-get update && apt-get install -y build-essential libssl-dev curl nodejs tofrodos dos2unix zip
@@ -11,19 +11,36 @@ RUN apt-get update && apt-get install -y build-essential libssl-dev curl nodejs 
 ADD . ${BUILD_DIR}
 WORKDIR ${BUILD_DIR}
 RUN rm -rf cmd/server-manager/typescript/node_modules
-RUN VERSION=${SM_VERSION} make deploy
+
+# Install esc tool for embedding assets
+RUN go get -v github.com/mjibson/esc && go install github.com/mjibson/esc
+
+# Build TypeScript/JavaScript assets first
+RUN cd cmd/server-manager/typescript && npm install && npx gulp build
+
+# Generate embedded Go files (requires esc to be installed)
+RUN go generate ./...
+
+# Build the binary
+RUN cd cmd/server-manager && \
+    mkdir -p build/linux && \
+    cp config.example.yml build/linux/config.yml && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -a -installsuffix cgo \
+    -ldflags="-s -w -X github.com/JustaPenguin/assetto-server-manager.BuildVersion=${SM_VERSION}" \
+    -o build/linux/server-manager
+
 RUN mv cmd/server-manager/build/linux/server-manager /usr/bin/
 
 FROM ubuntu:22.04 AS run
 LABEL maintainer="psalkowski"
 LABEL org.opencontainers.image.source="https://github.com/psalkowski/assetto-server-manager"
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
-ENV SERVER_USER assetto
-ENV SERVER_MANAGER_DIR /home/${SERVER_USER}/server-manager/
-ENV SERVER_INSTALL_DIR ${SERVER_MANAGER_DIR}/assetto
-ENV LANG C.UTF-8
+ENV SERVER_USER=assetto
+ENV SERVER_MANAGER_DIR=/home/${SERVER_USER}/server-manager/
+ENV SERVER_INSTALL_DIR=${SERVER_MANAGER_DIR}/assetto
+ENV LANG=C.UTF-8
 
 ENV STEAMCMD_URL="http://media.steampowered.com/installer/steamcmd_linux.tar.gz"
 ENV STEAMROOT=/opt/steamcmd
