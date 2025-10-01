@@ -5,7 +5,9 @@ let tsify = require('tsify');
 let sourcemaps = require('gulp-sourcemaps');
 let buffer = require('vinyl-buffer');
 let uglify = require('gulp-uglify-es').default;
-let sass = require("gulp-sass");
+let gulpSass = require("gulp-sass");
+let dartSass = require("sass");
+let sass = gulpSass(dartSass);
 let autoPrefixer = require("gulp-autoprefixer");
 let fsCache = require( 'gulp-fs-cache' );
 
